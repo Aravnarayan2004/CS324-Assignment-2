@@ -1,0 +1,231 @@
+syntax = "proto3";
+
+package cs324;
+
+option java_package = "cs324.proto";
+option java_multiple_files = true;
+option java_outer_classname = "DistributedProto";
+
+message Empty {}
+
+message Ack {
+  bool ok = 1;
+  string message = 2;
+}
+
+enum JobType {
+  JOB_TYPE_UNSPECIFIED = 0;
+  JOB_TYPE_MAX = 1;
+  JOB_TYPE_PRIMESUM = 2;
+  JOB_TYPE_PRIMECOUNT = 3;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_QUEUED = 1;
+  JOB_RUNNING = 2;
+  JOB_COMPLETED = 3;
+  JOB_FAILED = 4;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_PENDING = 1;
+  TASK_RUNNING = 2;
+  TASK_COMPLETED = 3;
+}
+
+message WorkerInfo {
+  int32 id = 1;
+  string host = 2;
+  int32 port = 3;
+  int32 jac = 4;
+  int64 last_seen_epoch_ms = 5;
+}
+
+message RegisterWorkerRequest {
+  WorkerInfo worker = 1;
+}
+
+message RegisterWorkerResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message WorkerHeartbeat {
+  int32 worker_id = 1;
+  int32 jac = 2;
+  int64 known_coordinator_term = 3;
+}
+
+message WorkerId {
+  int32 worker_id = 1;
+}
+
+message WorkerList {
+  repeated WorkerInfo workers = 1;
+}
+
+message CoordinatorInfo {
+  bool available = 1;
+  int32 worker_id = 2;
+  string host = 3;
+  int32 port = 4;
+  int64 term = 5;
+}
+
+message SetCoordinatorRequest {
+  int32 worker_id = 1;
+  int64 term = 2;
+}
+
+service BootstrapService {
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+  rpc UnregisterWorker(WorkerId) returns (Ack);
+  rpc Heartbeat(WorkerHeartbeat) returns (Ack);
+  rpc GetActiveWorkers(Empty) returns (WorkerList);
+  rpc GetCoordinator(Empty) returns (CoordinatorInfo);
+  rpc SetCoordinator(SetCoordinatorRequest) returns (Ack);
+}
+
+message PingRequest {
+  int32 from_worker_id = 1;
+}
+
+message PingReply {
+  bool ok = 1;
+  int32 worker_id = 2;
+  bool coordinator = 3;
+  int64 coordinator_term = 4;
+}
+
+message ElectionMessage {
+  string election_id = 1;
+  int64 term = 2;
+  int32 origin_worker_id = 3;
+  int32 sender_worker_id = 4;
+  int32 excluded_worker_id = 5;
+  string reason = 6;
+}
+
+message CoordinatorAnnouncement {
+  string election_id = 1;
+  int64 term = 2;
+  WorkerInfo coordinator = 3;
+  int32 sender_worker_id = 4;
+}
+
+message JobSpec {
+  JobType type = 1;
+  repeated int32 numbers = 2;
+  int32 start = 3;
+  int32 end = 4;
+}
+
+message TaskSpec {
+  string job_id = 1;
+  string task_id = 2;
+  JobType type = 3;
+  repeated int32 numbers = 4;
+  int32 start = 5;
+  int32 end = 6;
+  int64 total_units = 7;
+  int32 attempt = 8;
+}
+
+message TaskUpdate {
+  string job_id = 1;
+  string task_id = 2;
+  int32 worker_id = 3;
+  TaskStatus status = 4;
+  int64 completed_units = 5;
+  int64 total_units = 6;
+  int64 partial_result = 7;
+  int32 attempt = 8;
+  string message = 9;
+}
+
+message TaskState {
+  TaskSpec spec = 1;
+  TaskStatus status = 2;
+  int32 worker_id = 3;
+  int64 completed_units = 4;
+  int64 partial_result = 5;
+  string message = 6;
+}
+
+message JobState {
+  string job_id = 1;
+  JobSpec spec = 2;
+  JobStatus status = 3;
+  int64 result = 4;
+  string message = 5;
+  repeated TaskState tasks = 6;
+  string client_request_id = 7;
+}
+
+message StateSnapshot {
+  int64 version = 1;
+  int64 coordinator_term = 2;
+  int32 coordinator_id = 3;
+  int64 created_epoch_ms = 4;
+  repeated JobState jobs = 5;
+}
+
+service WorkerService {
+  rpc Ping(PingRequest) returns (PingReply);
+  rpc Election(ElectionMessage) returns (Ack);
+  rpc AnnounceCoordinator(CoordinatorAnnouncement) returns (Ack);
+  rpc ExecuteTask(TaskSpec) returns (stream TaskUpdate);
+  rpc ReplicateState(StateSnapshot) returns (Ack);
+}
+
+message SubmitJobRequest {
+  JobSpec job = 1;
+  string client_request_id = 2;
+}
+
+message SubmitJobReply {
+  bool accepted = 1;
+  string job_id = 2;
+  string message = 3;
+  int32 coordinator_id = 4;
+  int64 coordinator_term = 5;
+}
+
+message JobWatchRequest {
+  string job_id = 1;
+}
+
+message JobStatusRequest {
+  string job_id = 1;
+}
+
+message WorkerProgress {
+  int32 worker_id = 1;
+  string task_id = 2;
+  TaskStatus status = 3;
+  int64 completed_units = 4;
+  int64 total_units = 5;
+  int32 attempt = 6;
+  string message = 7;
+}
+
+message JobProgress {
+  string job_id = 1;
+  JobStatus status = 2;
+  int32 overall_percent = 3;
+  int64 completed_units = 4;
+  int64 total_units = 5;
+  int64 result = 6;
+  string message = 7;
+  repeated WorkerProgress workers = 8;
+  int32 coordinator_id = 9;
+  int64 coordinator_term = 10;
+}
+
+service CoordinatorService {
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobReply);
+  rpc WatchJob(JobWatchRequest) returns (stream JobProgress);
+  rpc GetJobStatus(JobStatusRequest) returns (JobProgress);
+}
