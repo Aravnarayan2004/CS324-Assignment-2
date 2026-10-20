@@ -13,6 +13,7 @@ public final class WorkerGrpcService extends WorkerServiceGrpc.WorkerServiceImpl
         this.runtime = runtime;
     }
 
+    
     @Override
     public void ping(PingRequest request, StreamObserver<PingReply> out) {
         reply(out, runtime.pingReply());

@@ -14,6 +14,7 @@ public final class TaskRecord {
                 initialPartial(spec), 0, "Pending");
     }
 
+    
     private TaskRecord(TaskSpec spec, TaskStatus status, int workerId, long completedUnits,
                        long partialResult, int attempt, String message) {
         this.baseSpec = spec.toBuilder().setAttempt(0).build();

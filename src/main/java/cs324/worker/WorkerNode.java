@@ -12,6 +12,7 @@ public final class WorkerNode {
             return;
         }
 
+        
         int id = Integer.parseInt(args[0]);
         int port = Integer.parseInt(args[1]);
         String bootstrapHost = args.length > 2 ? args[2] : "127.0.0.1";
