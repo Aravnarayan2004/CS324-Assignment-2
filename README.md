@@ -1,185 +1,405 @@
-# CS324 Distributed Systems 2026 - Assignment 2
+# CS324 Assignment 2 - Distributed System
 
-This project is a gRPC/Protocol Buffers rewrite and extension of the submitted A1 system. It keeps the A1 ideas of a Bootstrap node, independent Worker JVMs, a worker-elected coordinator, JAC-based leader selection, Java-threaded computation, and coordinator rotation after five jobs, while adding the A2 requirements for progress streaming and failure recovery.
+This project is a distributed Java system that uses **gRPC**, **Protocol Buffers**, and **multiple Worker processes**.
 
-## Requirements
+The main GUI lets you:
 
-- JDK 17 or later
-- Maven 3.9+ (or a recent Maven 3.x)
+- Start the Bootstrap server
+- Start multiple Workers
+- Submit `MAX`, `PRIMESUM`, and `PRIMECOUNT` jobs
+- View job progress
+- View worker/task progress
+- Stop or kill Workers
+- Test Coordinator failure and recovery
 
-## Build
+---
 
-From the project directory:
+## 1. Requirements
+
+Install:
+
+- **Java JDK 17 or newer**
+- **Apache Maven**
+
+Check that both are installed:
 
 ```bash
-mvn clean compile
+java -version
+mvn -version
 ```
 
-The Protocol Buffer and gRPC Java sources are generated automatically from:
+If both commands show version information, you are ready.
+
+---
+
+## 2. Open the Project
+
+Open a terminal in the project folder.
+
+The folder should contain:
 
 ```text
-src/main/proto/distributed.proto
-```
-
-## Run the system
-
-### Recommended: use the integrated Client GUI
-
-After building once with `mvn clean compile`, start the client:
-
-```bash
-mvn exec:java -Dexec.mainClass=cs324.client.ClientGUI
-```
-
-`ClientGUI.java` now contains both the assignment client and the local process controls in one window. Use the two tabs:
-
-- **Jobs** - submit `MAX`, `PRIMESUM`, and `PRIMECOUNT` jobs and view real-time progress.
-- **System Control** - start/stop Bootstrap and workers, view cluster membership and logs, and trigger worker/coordinator failures for testing.
-
-The launcher uses the Bootstrap host/port shown on the **Jobs** tab. With the defaults, Worker 1 uses port `50051`, Worker 2 uses `50052`, and so on. Set the worker count to `4` and click **Start Everything** to launch Bootstrap and Workers 1-4 as **separate JVM processes**.
-
-The System Control tab provides **Start Bootstrap**, **Start Worker**, **Start Workers 1-N**, **Start Everything**, **Kill Worker**, **Kill Coordinator**, **Stop Everything**, a live process log, and a cluster table showing active workers, ports, JAC, and the current coordinator. Selecting a worker in the table copies its ID into the worker selector.
-
-The launcher is only a convenience interface; Bootstrap, workers, coordinator communication, job execution, election, and recovery still use gRPC between separate processes.
-
-### Manual terminal startup
-
-If you want to run each process manually, open separate terminals. Start the Bootstrap node first:
-
-```bash
-mvn exec:java -Dexec.mainClass=cs324.bootstrap.BootstrapNode -Dexec.args="50050"
-```
-
-Start at least three workers. The arguments are:
-
-```text
-<ID> <PORT> [BOOTSTRAP_HOST] [BOOTSTRAP_PORT] [ADVERTISED_HOST]
+pom.xml
+src/
+README.md
 ```
 
 Example:
 
 ```bash
-mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="1 50051 127.0.0.1 50050 127.0.0.1"
-mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="2 50052 127.0.0.1 50050 127.0.0.1"
-mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="3 50053 127.0.0.1 50050 127.0.0.1"
-mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="4 50054 127.0.0.1 50050 127.0.0.1"
+cd CS324-A2
 ```
 
-Workers automatically register, form an overlay of neighbours, and elect a coordinator. There is no manual ENTER step.
+If the folder path contains spaces, use quotation marks.
 
-Start the Swing client:
+Example:
+
+```bash
+cd "/cygdrive/c/Users/Your Name/Downloads/CS324-A2"
+```
+
+---
+
+## 3. Build the Project
+
+Run:
+
+```bash
+mvn clean compile
+```
+
+Wait for:
+
+```text
+BUILD SUCCESS
+```
+
+Maven will automatically download the required gRPC and Protocol Buffer libraries.
+
+---
+
+## 4. Start the Main GUI
+
+Run:
 
 ```bash
 mvn exec:java -Dexec.mainClass=cs324.client.ClientGUI
 ```
 
-The client talks to Bootstrap at `127.0.0.1:50050` by default. It discovers the current coordinator automatically.
+The Client GUI will open.
 
-## Supported jobs
+The GUI contains two main tabs:
 
-- `MAX(numbers)` - maximum integer from a list
-- `PRIMESUM(start, end)` - sum of all primes in the inclusive range
-- `PRIMECOUNT(numbers)` - number of primes in a list
+- **Jobs**
+- **System Control**
 
-For `MAX` and `PRIMECOUNT`, enter comma- or whitespace-separated integers in **Numbers**. For `PRIMESUM`, use **Start** and **End**.
+---
 
-## A2 features implemented
+## 5. Start the Distributed System
 
-### gRPC and Protocol Buffers
+Open the **System Control** tab.
 
-All communication between Bootstrap, workers, coordinator, and clients is gRPC. There is no Java RMI code in A2. `distributed.proto` defines Bootstrap membership, leader-election messages, task execution, coordinator-state replication, job submission, and server-streaming job progress.
-
-### Real-time progress
-
-The coordinator splits each job into multiple task chunks. Workers stream `TaskUpdate` messages containing actual processed work units. The coordinator derives overall percentage from completed work and streams `JobProgress` messages to clients with `WatchJob`.
-
-The Swing table uses a real `JProgressBar` renderer. Click/select a job or its progress cell to see the task/worker breakdown, including worker ID, task, actual units processed, task status, retry attempt, and recovery messages.
-
-### Worker failure tolerance
-
-Each worker sends a Bootstrap heartbeat every second. Bootstrap removes workers that have not been seen for five seconds. The coordinator also reacts immediately to a failed task RPC.
-
-A task on a failed/unreachable worker is returned to `TASK_PENDING` and reassigned. Attempts are numbered, so late updates from an older attempt cannot overwrite the current attempt. A slow worker is not declared failed merely because computation takes time: as long as its process heartbeat and task stream remain alive, the task is allowed to continue.
-
-### Dynamic worker joining
-
-Jobs are split into more chunks than the current worker count. The coordinator refreshes active membership continuously and assigns pending chunks to workers that become available, including newly joined workers.
-
-### Coordinator failure tolerance
-
-Workers periodically discover and ping the current coordinator. If there is no coordinator, or the coordinator cannot be reached repeatedly, a new election starts automatically.
-
-Election messages are flooded through the worker overlay. The leader rule retained from A1 is:
-
-1. lowest JAC wins;
-2. if JAC is equal, highest worker ID wins.
-
-Election terms prevent stale coordinator announcements from replacing a newer coordinator.
-
-The coordinator continuously replicates a `StateSnapshot` to the other active workers. The snapshot contains jobs, their input specifications, task assignments/statuses, completed partial results, retry attempts, and final results. After failover, the new coordinator loads the latest local replica, keeps completed tasks, changes previously running tasks back to pending, and reassigns them. This allows a submitted job to continue without restarting the system.
-
-The client also reconnects its progress stream after coordinator failover. It asks Bootstrap for the replacement coordinator and resumes `WatchJob(jobId)`.
-
-### A1 coordinator rotation
-
-The coordinator JAC increases when it accepts a job. After five jobs assigned in a coordinator term have completed, the system automatically starts a new election. The rotation waits for the active jobs to finish, preventing an unnecessary handover in the middle of the normal five-job rotation. Crash recovery can still hand over during a running job.
-
-## Failure demonstrations
-
-### Worker crash during a long job
-
-1. Start Bootstrap and at least three workers.
-2. Submit a large `PRIMESUM`, for example `1` to `5000000` or larger depending on the machine.
-3. Observe worker/task progress in the GUI.
-4. Stop one non-coordinator Worker JVM with Ctrl+C or terminate it.
-5. The job continues. The failed worker's unfinished task is requeued and later assigned to another worker.
-
-### Add a worker while a job is running
-
-1. Start Bootstrap with two workers.
-2. Submit a long `PRIMESUM` job.
-3. Start Worker 3 while the job is still running.
-4. After membership refresh, Worker 3 can receive one of the remaining pending chunks.
-
-### Coordinator crash during a job
-
-1. Start at least three workers and submit a long job.
-2. Read the coordinator ID from the worker logs or client label.
-3. Terminate that coordinator Worker JVM.
-4. The remaining workers detect failure, elect a replacement, restore replicated state, and reassign work that was running when the coordinator died.
-5. The GUI's stream disconnects briefly, rediscovers the new coordinator, and continues showing the same job ID.
-
-## Important source files
+Use these default settings:
 
 ```text
+Bootstrap Host: 127.0.0.1
+Bootstrap Port: 50050
+Number of Workers: 4
+```
+
+Click:
+
+```text
+Start Everything
+```
+
+This starts:
+
+```text
+Bootstrap  -> Port 50050
+Worker 1   -> Port 50051
+Worker 2   -> Port 50052
+Worker 3   -> Port 50053
+Worker 4   -> Port 50054
+```
+
+Wait a few seconds for the Workers to register and for a Coordinator to be elected.
+
+---
+
+## 6. Submit a Job
+
+Open the **Jobs** tab.
+
+### MAX Example
+
+Select:
+
+```text
+MAX
+```
+
+Enter:
+
+```text
+10, 20, 5, 100, 50
+```
+
+Expected result:
+
+```text
+100
+```
+
+### PRIMECOUNT Example
+
+Select:
+
+```text
+PRIMECOUNT
+```
+
+Enter:
+
+```text
+2, 3, 4, 5, 6, 7, 8, 11
+```
+
+Expected result:
+
+```text
+5
+```
+
+### PRIMESUM Example
+
+Select:
+
+```text
+PRIMESUM
+```
+
+Enter:
+
+```text
+Start: 1
+End: 10
+```
+
+Expected result:
+
+```text
+17
+```
+
+---
+
+## 7. View Job Progress
+
+For a longer test, use:
+
+```text
+PRIMESUM
+Start: 1
+End: 100000000
+```
+
+The GUI will show:
+
+- Job ID
+- Job status
+- Progress percentage
+- Worker/task progress
+- Final result
+
+Select the job to view the worker breakdown.
+
+---
+
+## 8. Test Worker Failure
+
+While a long job is running:
+
+1. Open **System Control**.
+2. Select a Worker that is **not** the Coordinator.
+3. Click **Kill Worker**.
+
+Expected behaviour:
+
+- The Worker stops.
+- The system detects the failure.
+- Unfinished work is reassigned.
+- The job continues.
+
+---
+
+## 9. Test Coordinator Failure
+
+While a long job is running:
+
+1. Open **System Control**.
+2. Click **Kill Coordinator**.
+
+Expected behaviour:
+
+- The current Coordinator stops.
+- The remaining Workers elect a new Coordinator.
+- The new Coordinator restores the job state.
+- The job continues automatically.
+- The Client GUI reconnects to the new Coordinator.
+
+---
+
+## 10. Add a New Worker
+
+To add another Worker while the system is running:
+
+1. Open **System Control**.
+2. Enter a new Worker ID.
+3. Click **Start Worker**.
+
+Example:
+
+```text
+Worker ID: 5
+Port: 50055
+```
+
+The new Worker will register with Bootstrap automatically.
+
+---
+
+## 11. Stop the System
+
+When finished:
+
+1. Open **System Control**.
+2. Click **Stop Everything**.
+3. Close the Client GUI.
+
+---
+
+# Manual Start (Optional)
+
+The GUI is the easiest way to run the system.
+
+You can also start each process manually.
+
+### Bootstrap
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.bootstrap.BootstrapNode -Dexec.args="50050"
+```
+
+### Worker 1
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="1 50051 127.0.0.1 50050 127.0.0.1"
+```
+
+### Worker 2
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="2 50052 127.0.0.1 50050 127.0.0.1"
+```
+
+### Worker 3
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="3 50053 127.0.0.1 50050 127.0.0.1"
+```
+
+### Worker 4
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.worker.WorkerNode -Dexec.args="4 50054 127.0.0.1 50050 127.0.0.1"
+```
+
+### Client GUI
+
+```bash
+mvn exec:java -Dexec.mainClass=cs324.client.ClientGUI
+```
+
+---
+
+# Quick Start
+
+For normal use, only these steps are needed:
+
+```text
+1. Open the project folder.
+2. Run: mvn clean compile
+3. Run: mvn exec:java -Dexec.mainClass=cs324.client.ClientGUI
+4. Open System Control.
+5. Click Start Everything.
+6. Open Jobs.
+7. Submit a job.
+8. Click Stop Everything when finished.
+```
+
+---
+
+# Troubleshooting
+
+### Maven is not found
+
+Run:
+
+```bash
+mvn -version
+```
+
+If Maven is not found, install Maven and add it to your system `PATH`.
+
+### Port already in use
+
+Close old Bootstrap or Worker processes and try again.
+
+### No Coordinator appears
+
+Make sure:
+
+- Bootstrap is running
+- At least one Worker is running
+- Workers successfully registered
+- The Bootstrap host and port are correct
+
+Wait a few seconds for the election to finish.
+
+### Job does not start
+
+Make sure:
+
+- A Coordinator has been elected
+- At least one Worker is active
+- Bootstrap is still running
+
+---
+
+# Default Ports
+
+| Process | Port |
+|---|---:|
+| Bootstrap | 50050 |
+| Worker 1 | 50051 |
+| Worker 2 | 50052 |
+| Worker 3 | 50053 |
+| Worker 4 | 50054 |
+
+---
+
+## Main Files
+
+```text
+pom.xml
 src/main/proto/distributed.proto
+src/main/java/cs324/client/ClientGUI.java
 src/main/java/cs324/bootstrap/BootstrapNode.java
 src/main/java/cs324/bootstrap/BootstrapServiceImpl.java
 src/main/java/cs324/worker/WorkerNode.java
 src/main/java/cs324/worker/WorkerRuntime.java
 src/main/java/cs324/worker/WorkerGrpcService.java
 src/main/java/cs324/worker/CoordinatorGrpcService.java
-src/main/java/cs324/model/JobRecord.java
-src/main/java/cs324/model/TaskRecord.java
-src/main/java/cs324/client/ClientGUI.java
 ```
 
-## Git requirement from the assignment
-
-The assignment requires a new A2 repository whose **initial commit is the submitted A1 code**, plus meaningful commits by all group members. Do not replace that history with one final code dump.
-
-A suitable workflow is:
-
-```bash
-git init
-# copy the exact submitted A1 files first
-git add .
-git commit -m "Initial commit: submitted Assignment 1"
-
-# then migrate/add A2 in multiple meaningful commits
-git add .
-git commit -m "Replace RMI interfaces with gRPC and protobuf"
-# continue with separate progress, failure recovery, GUI, testing commits
-```
-
-Before submission, append `git log` to the report and include the required contribution/minutes page. Those items depend on the group's real development history and should not be fabricated.
