@@ -70,7 +70,6 @@ public final class BootstrapServiceImpl extends BootstrapServiceGrpc.BootstrapSe
                 .build();
         reply(out, ack(true, "Heartbeat accepted"));
     }
-
     @Override
     public void getActiveWorkers(Empty request, StreamObserver<WorkerList> out) {
         WorkerList.Builder list = WorkerList.newBuilder();
