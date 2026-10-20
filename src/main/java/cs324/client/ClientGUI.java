@@ -672,3 +672,4 @@ public final class ClientGUI extends JFrame {
         }
     }
 }
+
