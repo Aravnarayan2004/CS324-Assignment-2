@@ -5,6 +5,7 @@ import cs324.proto.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+
 public final class JobRecord {
     private final String jobId;
     private final JobSpec spec;
